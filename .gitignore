@@ -3,3 +3,6 @@
 .cursor
 __pycache__/
 *.log
+newsaroo-env/
+venv/
+env/

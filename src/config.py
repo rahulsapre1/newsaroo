@@ -36,4 +36,11 @@ LLM_CONFIG = {
     "model": DEFAULT_CONFIG["llm_model"],
     "max_tokens": DEFAULT_CONFIG["max_tokens"],
     "system_message": "You are a helpful news summarization assistant that provides concise, accurate summaries of recent news."
-} 
+}
+
+# Add Supabase Configuration
+SUPABASE_URL = os.getenv("SUPABASE_API_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_API_KEY")
+
+# Add some debug logging
+print(f"Loaded SUPABASE_URL: {SUPABASE_URL}")  # Temporary debug line 

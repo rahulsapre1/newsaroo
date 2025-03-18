@@ -6,11 +6,11 @@ Handles searching for news articles using SerpAPI.
 import logging
 from serpapi import GoogleSearch
 from ..config import SERPAPI_KEY, DEFAULT_CONFIG
-
+import asyncio
 # Set up logging
 logger = logging.getLogger(__name__)
 
-def search_news(topic, api_key=None, time_period=None):
+async def search_news(topic, api_key=None, time_period=None):
     """Search for news on the given topic using SerpAPI
     
     Args:
@@ -45,9 +45,10 @@ def search_news(topic, api_key=None, time_period=None):
     }
     
     try:
-        # Execute the search
+        # Execute the search in a non-blocking way
         search = GoogleSearch(params)
-        results = search.get_dict()
+        loop = asyncio.get_event_loop()
+        results = await loop.run_in_executor(None, search.get_dict)
         
         # Check if we have news results
         if "news_results" in results and results["news_results"]:

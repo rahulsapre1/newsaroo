@@ -4,14 +4,15 @@ Handles summarizing news articles using LLM.
 """
 
 import logging
+import asyncio
 import litellm
 from ..config import OPENAI_API_KEY, LLM_CONFIG
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-def summarize_with_llm(articles, topic, model=None, max_tokens=None):
-    """Summarize the news articles using an LLM
+async def summarize_with_llm(articles, topic, model=None, max_tokens=None):
+    """Summarize the news articles using an LLM asynchronously
     
     Args:
         articles (list): List of processed articles
@@ -60,14 +61,18 @@ def summarize_with_llm(articles, topic, model=None, max_tokens=None):
         # Configure litellm
         litellm.set_verbose = False
         
-        # Call the LLM using litellm
-        response = litellm.completion(
-            model=model,
-            messages=[
-                {"role": "system", "content": LLM_CONFIG["system_message"]},
-                {"role": "user", "content": prompt}
-            ],
-            max_tokens=max_tokens
+        # Since litellm.completion might be synchronous, we'll run it in an executor
+        loop = asyncio.get_event_loop()
+        response = await loop.run_in_executor(
+            None,
+            lambda: litellm.completion(
+                model=model,
+                messages=[
+                    {"role": "system", "content": LLM_CONFIG["system_message"]},
+                    {"role": "user", "content": prompt}
+                ],
+                max_tokens=max_tokens
+            )
         )
         
         # Extract the summary from the response
