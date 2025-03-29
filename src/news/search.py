@@ -4,7 +4,7 @@ Handles searching for news articles using SerpAPI.
 """
 
 import logging
-from serpapi import GoogleSearch
+from serpapi.google_search import GoogleSearch
 from ..config import SERPAPI_KEY, DEFAULT_CONFIG
 import asyncio
 # Set up logging
