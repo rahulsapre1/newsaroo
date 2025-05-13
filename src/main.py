@@ -4,7 +4,7 @@ Main module for the Newsaroo API application.
 
 import logging
 import sys
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from .api.routes import router
 from .api.models import NewsRequest, NewsResponse, Article
@@ -49,53 +49,69 @@ app.include_router(router, prefix="/api/v1")
 async def root():
     return {"status": "healthy"}
 
-@app.post("/summarize", response_model=NewsResponse)
-async def summarize_news(request: NewsRequest):
-    """Get a summary of news articles for a specific topic"""
-    try:
-        if not SERPAPI_KEY or not OPENAI_API_KEY:
-            raise HTTPException(
-                status_code=500,
-                detail="API keys not configured"
-            )
-
-        news_results = await search_news(
-            topic=request.topic,
-            api_key=SERPAPI_KEY,
-            time_period=request.time_period
-        )
-        
-        if not news_results:
-            raise HTTPException(
-                status_code=404,
-                detail=f"No news found for topic: {request.topic}"
-            )
-
-        processed_articles = await process_news_results(
-            news_results=news_results,
-            max_articles=request.max_articles
-        )
-
-        summary = await summarize_with_llm(processed_articles, request.topic)
-
-        articles = [
-            Article(
-                title=article["title"],
-                source=article["source"],
-                summary=article["content"][:200] + "..."
-            )
-            for article in processed_articles
-        ]
-
-        return NewsResponse(
-            topic=request.topic,
-            summary=summary,
-            articles=articles,
-            timestamp=datetime.now().isoformat()
-        )
-
-    except Exception as e:
+async def process_news_request(topic: str, time_period: str, max_articles: int) -> NewsResponse:
+    """Common processing logic for both GET and POST requests"""
+    if not SERPAPI_KEY or not OPENAI_API_KEY:
         raise HTTPException(
             status_code=500,
-            detail=str(e)
-        ) 
+            detail="API keys not configured"
+        )
+
+    news_results = await search_news(
+        topic=topic,
+        api_key=SERPAPI_KEY,
+        time_period=time_period
+    )
+    
+    if not news_results:
+        raise HTTPException(
+            status_code=404,
+            detail=f"No news found for topic: {topic}"
+        )
+
+    processed_articles = await process_news_results(
+        news_results=news_results,
+        max_articles=max_articles
+    )
+
+    summary = await summarize_with_llm(processed_articles, topic)
+
+    articles = [
+        Article(
+            title=article["title"],
+            source=article["source"],
+            summary=article["content"][:200] + "..."
+        )
+        for article in processed_articles
+    ]
+
+    return NewsResponse(
+        topic=topic,
+        summary=summary,
+        articles=articles,
+        timestamp=datetime.now().isoformat()
+    )
+
+@app.get("/summarize", response_model=NewsResponse)
+async def summarize_news_get(
+    topic: str = Query(..., description="The news topic to search for"),
+    time_period: str = Query("1d", description="Time period for news (e.g., 1d, 7d)"),
+    max_articles: int = Query(5, description="Maximum number of articles to process", ge=1, le=20)
+):
+    """Get a summary of news articles for a specific topic using GET method"""
+    try:
+        return await process_news_request(topic, time_period, max_articles)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/summarize", response_model=NewsResponse)
+async def summarize_news_post(request: NewsRequest):
+    """Get a summary of news articles for a specific topic using POST method"""
+    try:
+        return await process_news_request(
+            topic=request.topic,
+            time_period=request.time_period,
+            max_articles=request.max_articles
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e)) 
