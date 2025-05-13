@@ -76,8 +76,9 @@ async def summarize_news(request: NewsRequest):
         articles = [
             Article(
                 title=article["title"],
-                source=article["source"],
-                summary=article["content"][:200] + "..."  # Short preview
+                source_name=article["source"]["name"] if isinstance(article["source"], dict) else str(article["source"]),
+                source_details=article["source"] if isinstance(article["source"], dict) else {},
+                summary=article.get("snippet") or article.get("description") or "No preview available"
             )
             for article in processed_articles
         ]

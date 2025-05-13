@@ -38,7 +38,8 @@ class NewsRequest(BaseModel):
 class Article(BaseModel):
     """Model for processed article information"""
     title: str
-    source: str
+    source_name: str
+    source_details: dict = Field(default_factory=dict)
     summary: str
 
 class NewsResponse(BaseModel):

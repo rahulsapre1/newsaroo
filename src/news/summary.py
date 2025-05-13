@@ -24,40 +24,40 @@ async def summarize_with_llm(articles, topic, model=None, max_tokens=None):
     Returns:
         str: Summarized news in the requested format
     """
-    if not articles:
-        logger.warning("No articles found to summarize.")
-        return "No articles found to summarize."
-    
-    # Use default model and max_tokens if none provided
-    model = model or LLM_CONFIG["model"]
-    max_tokens = max_tokens or LLM_CONFIG["max_tokens"]
-    
-    if not OPENAI_API_KEY:
-        logger.error("No OpenAI API key provided. Cannot summarize articles.")
-        return "Error: No OpenAI API key provided. Please check your .env file."
-    
-    logger.info("Summarizing news articles using LLM...")
-    print("Summarizing news articles using LLM...")
-    
-    # Prepare the context for the LLM
-    context = f"I need a summary of recent news about '{topic}'. Here are the articles I found:\n\n"
-    
-    for i, article in enumerate(articles):
-        context += f"Article {i+1}: {article['title']}\n"
-        context += f"Source: {article['source']}\n"
-        context += f"Date: {article['date']}\n"
-        context += f"Snippet: {article['snippet']}\n\n"
-    
-    # Create the prompt for the LLM
-    prompt = f"""{context}
-    
-    Based on these articles, provide me with the "Top 3 important items I should know about {topic} and why they matter".
-    
-    Format your response as a numbered list with a brief explanation for each item.
-    Focus on the most significant developments or insights from the last 24 hours.
-    """
-    
     try:
+        if not articles:
+            logger.warning("No articles found to summarize.")
+            raise ValueError("No articles found to summarize.")
+        
+        # Use default model and max_tokens if none provided
+        model = model or LLM_CONFIG["model"]
+        max_tokens = max_tokens or LLM_CONFIG["max_tokens"]
+        
+        if not OPENAI_API_KEY:
+            logger.error("No OpenAI API key provided. Cannot summarize articles.")
+            raise ValueError("OpenAI API key not configured. Please check your .env file.")
+        
+        logger.info("Summarizing news articles using LLM...")
+        
+        # Prepare the context for the LLM
+        context = f"I need a summary of recent news about '{topic}'. Here are the articles I found:\n\n"
+        
+        for i, article in enumerate(articles):
+            context += f"Article {i+1}: {article.get('title', 'Untitled')}\n"
+            source = article.get('source', {})
+            source_name = source['name'] if isinstance(source, dict) and 'name' in source else str(source or 'Unknown Source')
+            context += f"Source: {source_name}\n"
+            context += f"Content: {article.get('content', 'No content available')}\n\n"
+        
+        # Create the prompt for the LLM
+        prompt = f"""{context}
+        
+        Based on these articles, provide me with the "Top 3 important items I should know about {topic} and why they matter".
+        
+        Format your response as a numbered list with a brief explanation for each item.
+        Focus on the most significant developments or insights.
+        """
+        
         # Configure litellm
         litellm.set_verbose = False
         
@@ -79,8 +79,8 @@ async def summarize_with_llm(articles, topic, model=None, max_tokens=None):
         summary = response.choices[0].message.content
         logger.info("Successfully generated summary")
         return summary
+        
     except Exception as e:
-        error_msg = f"Error summarizing with LLM: {e}"
+        error_msg = f"Error in summarization: {str(e)}"
         logger.error(error_msg)
-        print(error_msg)
-        return "Error generating summary. Please check your API keys and try again." 
+        raise Exception(error_msg)  # Propagate error for proper HTTP status 

@@ -51,46 +51,75 @@ async def root():
 
 async def process_news_request(topic: str, time_period: str, max_articles: int) -> NewsResponse:
     """Common processing logic for both GET and POST requests"""
-    if not SERPAPI_KEY or not OPENAI_API_KEY:
+    try:
+        # Check API keys
+        if not SERPAPI_KEY:
+            raise HTTPException(status_code=500, detail="SERP API key not configured")
+        if not OPENAI_API_KEY:
+            raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+
+        # Search for news
+        news_results = await search_news(
+            topic=topic,
+            api_key=SERPAPI_KEY,
+            time_period=time_period
+        )
+        
+        if not news_results:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No news found for topic: {topic}"
+            )
+
+        # Process articles
+        processed_articles = await process_news_results(
+            news_results=news_results,
+            max_articles=max_articles
+        )
+
+        if not processed_articles:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Failed to process articles for topic: {topic}"
+            )
+
+        # Generate summary
+        try:
+            summary = await summarize_with_llm(processed_articles, topic)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to generate summary: {str(e)}"
+            )
+
+        # Create response
+        articles = [
+            Article(
+                title=article.get("title", "Untitled"),
+                source_name=article["source"]["name"] if isinstance(article["source"], dict) else str(article.get("source", "Unknown Source")),
+                source_details=article["source"] if isinstance(article["source"], dict) else {},
+                summary=article.get("snippet") or article.get("description") or "No preview available"
+            )
+            for article in processed_articles
+        ]
+
+        return NewsResponse(
+            topic=topic,
+            summary=summary,
+            articles=articles,
+            timestamp=datetime.now().isoformat()
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error: {str(e)}")
         raise HTTPException(
             status_code=500,
-            detail="API keys not configured"
+            detail=f"An unexpected error occurred: {str(e)}"
         )
-
-    news_results = await search_news(
-        topic=topic,
-        api_key=SERPAPI_KEY,
-        time_period=time_period
-    )
-    
-    if not news_results:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No news found for topic: {topic}"
-        )
-
-    processed_articles = await process_news_results(
-        news_results=news_results,
-        max_articles=max_articles
-    )
-
-    summary = await summarize_with_llm(processed_articles, topic)
-
-    articles = [
-        Article(
-            title=article["title"],
-            source=article["source"],
-            summary=article["content"][:200] + "..."
-        )
-        for article in processed_articles
-    ]
-
-    return NewsResponse(
-        topic=topic,
-        summary=summary,
-        articles=articles,
-        timestamp=datetime.now().isoformat()
-    )
 
 @app.get("/summarize", response_model=NewsResponse)
 async def summarize_news_get(
@@ -99,19 +128,13 @@ async def summarize_news_get(
     max_articles: int = Query(5, description="Maximum number of articles to process", ge=1, le=20)
 ):
     """Get a summary of news articles for a specific topic using GET method"""
-    try:
-        return await process_news_request(topic, time_period, max_articles)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    return await process_news_request(topic, time_period, max_articles)
 
 @app.post("/summarize", response_model=NewsResponse)
 async def summarize_news_post(request: NewsRequest):
     """Get a summary of news articles for a specific topic using POST method"""
-    try:
-        return await process_news_request(
-            topic=request.topic,
-            time_period=request.time_period,
-            max_articles=request.max_articles
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) 
+    return await process_news_request(
+        topic=request.topic,
+        time_period=request.time_period,
+        max_articles=request.max_articles
+    ) 
