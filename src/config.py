@@ -5,6 +5,10 @@ Handles loading environment variables and setting up configuration.
 
 import os
 from dotenv import load_dotenv
+import logging
+
+# Set up logging
+logger = logging.getLogger(__name__)
 
 # Load environment variables from .env file
 load_dotenv()
@@ -15,10 +19,10 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # Check if keys are available
 if not SERPAPI_KEY:
-    print("Warning: SERP_API_KEY not found in environment variables. Please check your .env file.")
+    logger.warning("SERP_API_KEY not found in environment variables. Please check your .env file.")
 
 if not OPENAI_API_KEY:
-    print("Warning: OPENAI_API_KEY not found in environment variables. Please check your .env file.")
+    logger.warning("OPENAI_API_KEY not found in environment variables. Please check your .env file.")
 
 # Set the OpenAI API key for litellm
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY if OPENAI_API_KEY else ""
@@ -27,7 +31,7 @@ os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY if OPENAI_API_KEY else ""
 DEFAULT_CONFIG = {
     "max_articles": 10,  # Maximum number of articles to process
     "time_period": "1d",  # Default time period for news search (1 day)
-    "llm_model": "gpt-4o",  # Default LLM model to use
+    "llm_model": "gpt-4",  # Default LLM model to use
     "max_tokens": 1000,  # Maximum tokens for LLM response
 }
 
@@ -38,9 +42,7 @@ LLM_CONFIG = {
     "system_message": "You are a helpful news summarization assistant that provides concise, accurate summaries of recent news."
 }
 
-# Add Supabase Configuration
-SUPABASE_URL = os.getenv("SUPABASE_API_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_API_KEY")
-
-# Add some debug logging
-print(f"Loaded SUPABASE_URL: {SUPABASE_URL}")  # Temporary debug line 
+# Log configuration status
+logger.info(f"Configuration loaded - API Keys status:")
+logger.info(f"SERP API Key: {'Present' if SERPAPI_KEY else 'Missing'}")
+logger.info(f"OpenAI API Key: {'Present' if OPENAI_API_KEY else 'Missing'}") 

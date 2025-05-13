@@ -21,54 +21,50 @@ class NewsRequest(BaseModel):
         description="The news topic to search for",
         example="artificial intelligence"
     )
-    max_articles: Optional[int] = Field(
-        default=3,
-        description="Maximum number of articles to process",
-        ge=1,  # greater than or equal to 1
-        le=20,  # less than or equal to 20
-        example=3
-    )
-    time_period: Optional[str] = Field(
+    time_period: str = Field(
         default="1d",
         description="Time period for news search (e.g., 1d, 7d)",
         pattern="^[1-7]d$",  # only allow 1d to 7d
         example="1d"
+    )
+    max_articles: int = Field(
+        default=5,
+        description="Maximum number of articles to process",
+        ge=1,  # greater than or equal to 1
+        le=20,  # less than or equal to 20
+        example=3
     )
 
 class Article(BaseModel):
     """Model for processed article information"""
     title: str
     source: str
-    date: str
-    link: str
-    snippet: str
+    summary: str
 
 class NewsResponse(BaseModel):
     """Response model for news summarization"""
-    task_id: str = Field(..., description="Unique identifier for the task")
-    status: TaskStatus = Field(..., description="Current status of the task")
-    summary: Optional[str] = Field(None, description="Generated summary when completed")
-    error: Optional[str] = Field(None, description="Error message if task failed")
-    articles: Optional[List[Article]] = Field(
-        None,
-        description="List of articles used for summarization"
+    topic: str
+    summary: str
+    articles: List[Article]
+    timestamp: str
+    metadata: dict = Field(
+        default_factory=dict,
+        description="Additional information about the search"
     )
 
     class Config:
         json_schema_extra = {
             "example": {
-                "task_id": "123e4567-e89b-12d3-a456-426614174000",
-                "status": "completed",
+                "topic": "artificial intelligence",
                 "summary": "1. Important development...\n2. Major announcement...\n3. Key trend...",
                 "articles": [
                     {
                         "title": "Breaking News Article",
                         "source": "News Source",
-                        "date": "2024-03-07",
-                        "link": "https://example.com/article",
-                        "snippet": "Article preview text..."
+                        "summary": "Article preview text..."
                     }
-                ]
+                ],
+                "timestamp": "2024-03-07T12:00:00"
             }
         }
 
@@ -102,4 +98,8 @@ class UpdateTopicsRequest(BaseModel):
         description="New list of topics of interest",
         min_items=1,
         example=["technology", "sports", "politics"]
-    ) 
+    )
+
+class ErrorResponse(BaseModel):
+    detail: str
+    status_code: int 

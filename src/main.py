@@ -1,17 +1,18 @@
 """
-Main module for the Newsaroo application.
-Entry point for the application.
+Main module for the Newsaroo API application.
 """
 
 import logging
-import argparse
 import sys
-
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from .api.routes import router
+from .api.models import NewsRequest, NewsResponse, Article
 from .news.search import search_news
 from .news.content import process_news_results
 from .news.summary import summarize_with_llm
-from .utils.display import display_summary, get_user_topic
 from .config import SERPAPI_KEY, OPENAI_API_KEY
+from datetime import datetime
 
 # Configure logging
 logging.basicConfig(
@@ -25,68 +26,76 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
-def news_summarizer(topic=None):
-    """Complete news summarizer function that runs the entire process
-    
-    Args:
-        topic (str, optional): The news topic. If None, will prompt the user.
-    
-    Returns:
-        str: The summarized news
-    """
-    # 1. Check API keys
-    if not SERPAPI_KEY:
-        logger.error("SERP API key not found. Please check your .env file.")
-        return "Error: SERP API key not found. Please check your .env file."
-    
-    if not OPENAI_API_KEY:
-        logger.error("OpenAI API key not found. Please check your .env file.")
-        return "Error: OpenAI API key not found. Please check your .env file."
-    
-    # 2. Get the topic if not provided
-    if topic is None:
-        topic = get_user_topic()
-    
-    logger.info(f"Starting news summarization for topic: {topic}")
-    print(f"Searching for news on: {topic}")
-    
-    # 3. Search for news
-    news_results = search_news(topic, SERPAPI_KEY)
-    
-    if not news_results:
-        logger.warning(f"No news found for topic: {topic}")
-        return "No news found for the given topic. Please try a different topic."
-    
-    # 4. Process the news results and fetch content
-    processed_articles = process_news_results(news_results)
-    
-    if not processed_articles:
-        logger.warning(f"No articles processed for topic: {topic}")
-        return "No articles could be processed. Please try a different topic."
-    
-    # 5. Summarize the articles
-    summary = summarize_with_llm(processed_articles, topic)
-    
-    # 6. Display the summary
-    display_summary(summary, topic)
-    
-    logger.info(f"Completed news summarization for topic: {topic}")
-    return summary
+# Create FastAPI app
+app = FastAPI(
+    title="Newsaroo API",
+    description="News summarization API"
+)
 
-def main():
-    """Main function to run the application"""
-    parser = argparse.ArgumentParser(description='Newsaroo - A daily news summarizer')
-    parser.add_argument('--topic', type=str, help='The news topic to search for')
-    args = parser.parse_args()
-    
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, replace with specific origins
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Include our router
+app.include_router(router, prefix="/api/v1")
+
+# Root endpoint
+@app.get("/")
+async def root():
+    return {"status": "healthy"}
+
+@app.post("/summarize", response_model=NewsResponse)
+async def summarize_news(request: NewsRequest):
+    """Get a summary of news articles for a specific topic"""
     try:
-        news_summarizer(args.topic)
-    except KeyboardInterrupt:
-        logger.info("Application terminated by user")
-        print("\nApplication terminated by user")
-    except Exception as e:
-        logger.error(f"An error occurred: {e}")
-        print(f"An error occurred: {e}")
+        if not SERPAPI_KEY or not OPENAI_API_KEY:
+            raise HTTPException(
+                status_code=500,
+                detail="API keys not configured"
+            )
 
-if __name__ == "__main__":
-    main() 
+        news_results = await search_news(
+            topic=request.topic,
+            api_key=SERPAPI_KEY,
+            time_period=request.time_period
+        )
+        
+        if not news_results:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No news found for topic: {request.topic}"
+            )
+
+        processed_articles = await process_news_results(
+            news_results=news_results,
+            max_articles=request.max_articles
+        )
+
+        summary = await summarize_with_llm(processed_articles, request.topic)
+
+        articles = [
+            Article(
+                title=article["title"],
+                source=article["source"],
+                summary=article["content"][:200] + "..."
+            )
+            for article in processed_articles
+        ]
+
+        return NewsResponse(
+            topic=request.topic,
+            summary=summary,
+            articles=articles,
+            timestamp=datetime.now().isoformat()
+        )
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        ) 

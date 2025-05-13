@@ -1,74 +1,73 @@
 # Newsaroo
 
-A daily news summarizer application that searches for news on a given topic, fetches the content, and summarizes it using an LLM.
+A powerful news summarization API that provides AI-powered summaries of current news topics.
 
 ## Features
-
-- Search for news on a given topic over the last 24 hours
-- Fetch and process article content
-- Summarize the news using an LLM
-- Display the "Top 3 important items I should know and why"
+- Search for news articles on any topic
+- Customize time period (1-7 days) and number of articles
+- AI-powered summarization
+- Available as both API and CLI tool
+- Support for exposing API via ngrok
 
 ## Requirements
+See [REQUIREMENTS.md](REQUIREMENTS.md) for detailed installation instructions for:
+- Homebrew (macOS package manager)
+- ngrok (for exposing local API)
+- Python dependencies
+- Environment variables
 
-- Python 3.11+
-- SerpAPI key
-- OpenAI API key
+## Quick Start
 
-## Installation
+1. Install system requirements:
+```bash
+# Install Homebrew
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 
-1. Clone the repository:
-   ```
-   git clone https://github.com/yourusername/newsaroo.git
-   cd newsaroo
-   ```
-
-2. Create a virtual environment:
-   ```
-   python -m venv .news_env
-   source .news_env/bin/activate  # On Windows: .news_env\Scripts\activate
-   ```
-
-3. Install the dependencies:
-   ```
-   pip install -r requirements.txt
-   ```
-
-4. Create a `.env` file in the root directory with your API keys:
-   ```
-   OPENAI_API_KEY=your_openai_api_key
-   SERP_API_KEY=your_serpapi_key
-   ```
-
-## Usage
-
-### Command Line
-
-Run the application from the command line:
-
-```
-python -m src.main
+# Install ngrok
+brew install ngrok
 ```
 
-You will be prompted to enter a news topic. Alternatively, you can specify the topic as a command-line argument:
+2. Set up Python environment:
+```bash
+# Create and activate virtual environment
+python3 -m venv .newsaroo_env
+source .newsaroo_env/bin/activate
 
+# Install dependencies
+pip install -r requirements.txt
 ```
-python -m src.main --topic "artificial intelligence"
+
+3. Run the API:
+```bash
+python run.py
 ```
 
-### As a Module
-
-You can also use the application as a module in your own code:
-
-```python
-from src.main import news_summarizer
-
-# Get a summary for a specific topic
-summary = news_summarizer("artificial intelligence")
-
-# Or let the application prompt the user for a topic
-summary = news_summarizer()
+4. (Optional) Expose API using ngrok:
+```bash
+ngrok http 8080
 ```
+
+## API Usage
+
+### Get News Summary
+```bash
+curl -X POST http://localhost:8080/api/v1/news/summarize \
+-H "Content-Type: application/json" \
+-d '{
+    "topic": "artificial intelligence",
+    "time_period": "3d",
+    "max_articles": 5
+}'
+```
+
+## CLI Usage
+```bash
+python -m src.cli --topic "artificial intelligence"
+```
+
+## Documentation
+- API documentation available at: `http://localhost:8080/docs`
+- Alternative documentation at: `http://localhost:8080/redoc`
 
 ## Project Structure
 

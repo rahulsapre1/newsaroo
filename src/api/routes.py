@@ -2,113 +2,101 @@
 API routes for the Newsaroo application.
 """
 
-from fastapi import APIRouter, HTTPException, Query, Path
-from src.api.models import NewsResponse, UserRegistration, UserResponse, UpdateTopicsRequest
+from fastapi import APIRouter, HTTPException, Query, Path, Depends
+from src.api.models import NewsResponse, UserRegistration, UserResponse, UpdateTopicsRequest, NewsRequest, Article, ErrorResponse
 from src.config import SERPAPI_KEY, OPENAI_API_KEY, DEFAULT_CONFIG
-from src.news.search import search_news
-from src.news.content import process_news_results
-from src.news.summary import summarize_with_llm
+from ..news.search import search_news
+from ..news.content import process_news_results
+from ..news.summary import summarize_with_llm
 from src.db.supabase_client import get_supabase_client
 import logging
 from datetime import datetime
+from typing import List
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
-@router.get("/news_summary")
-async def news_summarizer(
-    topic: str = Query(..., description="The news topic to search for", min_length=2),
-    max_articles: int = Query(
-        default=DEFAULT_CONFIG["max_articles"], 
-        description="Maximum number of articles to process",
-        ge=1,  # greater than or equal to 1
-        le=20  # less than or equal to 20
-    ),
-    time_period: str = Query(
-        default=DEFAULT_CONFIG["time_period"],
-        description="Time period for news search (e.g., 1d, 7d)",
-        pattern="^[1-7]d$"  # only allow 1d to 7d
-    )
-):
-    """Complete news summarizer endpoint that runs the entire process
-    
-    Args:
-        topic (str): The news topic to search for
-        max_articles (int, optional): Maximum number of articles to process. Defaults to 10.
-        time_period (str, optional): Time period for news search. Defaults to "1d".
-    
-    Returns:
-        dict: Contains topic, summary and articles
+@router.get("/", tags=["Health"])
+async def health_check():
+    """Health check endpoint"""
+    return {"status": "healthy", "timestamp": datetime.now().isoformat()}
+
+@router.post("/news/summarize", response_model=NewsResponse, tags=["News"])
+async def summarize_news(request: NewsRequest):
     """
-    # 1. Check API keys
-    if not SERPAPI_KEY:
-        logger.error("SERP API key not found. Please check your .env file.")
-        raise HTTPException(
-            status_code=500,
-            detail="Error: SERP API key not found. Please check your .env file."
-        )
+    Get a summary of news articles for a specific topic
     
-    if not OPENAI_API_KEY:
-        logger.error("OpenAI API key not found. Please check your .env file.")
-        raise HTTPException(
-            status_code=500,
-            detail="Error: OpenAI API key not found. Please check your .env file."
-        )
-    
-    logger.info(f"Starting news summarization for topic: {topic}")
-    
+    Parameters:
+    - topic: The news topic to search for
+    - time_period: Time period for news (1d to 7d, default: 1d)
+    - max_articles: Number of articles to process (1-20, default: 5)
+    """
     try:
-        # 3. Search for news
-        news_results = await search_news(topic, SERPAPI_KEY, time_period)
-        
+        # Check API keys first
+        if not SERPAPI_KEY or not OPENAI_API_KEY:
+            raise HTTPException(
+                status_code=500,
+                detail="API keys not found. Please check your configuration."
+            )
+
+        # Search for news with custom time period
+        news_results = await search_news(
+            topic=request.topic,
+            api_key=SERPAPI_KEY,
+            time_period=request.time_period
+        )
         if not news_results:
-            logger.warning(f"No news found for topic: {topic}")
             raise HTTPException(
                 status_code=404,
-                detail="No news found for the given topic. Please try a different topic."
+                detail=f"No news found for topic: {request.topic}"
             )
-        
-        # 4. Process the news results and fetch content
-        processed_articles = await process_news_results(news_results, max_articles)
-        
+
+        # Process articles with custom limit
+        processed_articles = await process_news_results(
+            news_results=news_results,
+            max_articles=request.max_articles
+        )
         if not processed_articles:
-            logger.warning(f"No articles processed for topic: {topic}")
             raise HTTPException(
-                status_code=404,
-                detail="No articles could be processed. Please try a different topic."
+                status_code=500,
+                detail="Failed to process news articles"
             )
-        
-        # 5. Summarize the articles
-        summary = await summarize_with_llm(processed_articles, topic)
-        
-        logger.info(f"Completed news summarization for topic: {topic}")
-        
-        # Simplify the article information to just title and link
-        simplified_articles = [
-            {
-                "title": article["title"],
-                "link": article["link"]
-            }
+
+        # Generate summary
+        summary = await summarize_with_llm(processed_articles, request.topic)
+        if summary.startswith("Error:"):
+            raise HTTPException(
+                status_code=500,
+                detail=summary
+            )
+
+        # Create response
+        articles = [
+            Article(
+                title=article["title"],
+                source=article["source"],
+                summary=article["content"][:200] + "..."  # Short preview
+            )
             for article in processed_articles
         ]
-        
-        # Return simplified response
-        return {
-            "topic": topic,
-            "summary": summary,
-            "articles": simplified_articles,
-            "metadata": {
-                "articles_found": len(simplified_articles),
-                "time_period": time_period
+
+        return NewsResponse(
+            topic=request.topic,
+            summary=summary,
+            articles=articles,
+            timestamp=datetime.now().isoformat(),
+            metadata={
+                "time_period": request.time_period,
+                "articles_found": len(articles),
+                "total_results": len(news_results)
             }
-        }
+        )
 
     except HTTPException as he:
         raise he
     except Exception as e:
-        logger.error(f"An error occurred: {e}")
         raise HTTPException(
             status_code=500,
             detail=f"An error occurred: {str(e)}"
