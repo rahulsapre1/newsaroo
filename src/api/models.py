@@ -71,24 +71,23 @@ class NewsResponse(BaseModel):
 
 class UserRegistration(BaseModel):
     """Request model for user registration"""
-    name: str = Field(..., description="User's name")
-    mobile_no: int = Field(
+    mobile_number: str = Field(
         ..., 
         description="User's mobile number",
-        gt=1000000000,  # 10-digit number validation
-        lt=9999999999
+        pattern="^[0-9]{10}$",  # Enforce 10-digit mobile number
+        example="9876543210"
     )
     topics_of_interest: List[str] = Field(
         ...,
         description="List of topics the user is interested in",
-        min_items=1
+        min_items=1,
+        example=["technology", "sports", "politics"]
     )
 
 class UserResponse(BaseModel):
     """Response model for user registration"""
     id: int
-    name: str
-    mobile_no: int
+    mobile_number: str
     topics_of_interest: List[str]
     created_at: datetime
 

@@ -4,11 +4,11 @@ API routes for the Newsaroo application.
 
 from fastapi import APIRouter, HTTPException, Query, Path, Depends
 from src.api.models import NewsResponse, UserRegistration, UserResponse, UpdateTopicsRequest, NewsRequest, Article, ErrorResponse
-from src.config import SERPAPI_KEY, OPENAI_API_KEY, DEFAULT_CONFIG
+from src.config import SERPAPI_KEY, OPENAI_API_KEY, DEFAULT_CONFIG, SUPABASE_API_URL, SUPABASE_API_KEY
 from ..news.search import search_news
 from ..news.content import process_news_results
 from ..news.summary import summarize_with_llm
-from src.db.supabase_client import get_supabase_client
+from src.db.supabase_client import get_supabase_client, SupabaseManager
 import logging
 from datetime import datetime
 from typing import List
@@ -105,40 +105,37 @@ async def summarize_news(request: NewsRequest):
 
 @router.post("/users", response_model=UserResponse)
 async def register_user(user: UserRegistration):
-    """Register a new user with their topics of interest
-    
-    Args:
-        user (UserRegistration): User registration details
-        
-    Returns:
-        UserResponse: Registered user details
-    """
+    """Register a new user with their topics of interest"""
     try:
         supabase = get_supabase_client()
         
-        # Convert topics to JSON format
+        # Check if user already exists
+        existing_user = await supabase.get_user(user.mobile_number)
+        if existing_user:
+            raise HTTPException(
+                status_code=400,
+                detail=f"User with mobile number {user.mobile_number} already exists"
+            )
+        
+        # Prepare user data
         user_data = {
-            "name": user.name,
-            "mobile_no": user.mobile_no,
-            "topics_of_interest": user.topics_of_interest
+            "mobile_number": user.mobile_number,
+            "topics_of_interest": user.topics_of_interest,
+            "created_at": datetime.now().isoformat()
         }
         
-        # Insert data into Supabase
-        result = supabase.table("newsaroo_users").insert(user_data).execute()
-        
-        if not result.data:
-            raise HTTPException(status_code=500, detail="Failed to create user")
-            
-        created_user = result.data[0]
+        # Insert user
+        created_user = await supabase.insert_user(user_data)
         
         return UserResponse(
             id=created_user['id'],
-            name=created_user['name'],
-            mobile_no=created_user['mobile_no'],
+            mobile_number=created_user['mobile_number'],
             topics_of_interest=created_user['topics_of_interest'],
             created_at=created_user['created_at']
         )
         
+    except HTTPException as he:
+        raise he
     except Exception as e:
         logger.error(f"Error registering user: {str(e)}")
         raise HTTPException(
@@ -146,13 +143,14 @@ async def register_user(user: UserRegistration):
             detail=f"Error registering user: {str(e)}"
         )
 
-@router.get("/debug-config")
+@router.get("/debug/config")
 async def debug_config():
-    """Temporary route to debug configuration"""
-    from ..config import SUPABASE_URL, SUPABASE_KEY
+    """Debug endpoint to check configuration"""
     return {
-        "supabase_url": SUPABASE_URL,
-        "supabase_key": SUPABASE_KEY and "exists" or "missing"
+        "supabase_url": SUPABASE_API_URL and "present" or "missing",
+        "supabase_key": SUPABASE_API_KEY and "present" or "missing",
+        "supabase_key_length": SUPABASE_API_KEY and len(SUPABASE_API_KEY) or 0,
+        "timestamp": datetime.now().isoformat()
     }
 
 @router.get("/user_news_summary/{mobile_no}")
@@ -232,43 +230,33 @@ async def get_user_news_summary(
             detail=f"Error generating news summary: {str(e)}"
         )
 
-@router.put("/update_users_topics/{mobile_no}")
-async def update_users_topics(
-    request: UpdateTopicsRequest,
-    mobile_no: int = Path(
-        ..., 
-        description="User's mobile number",
-        gt=1000000000,  # 10-digit number validation
-        lt=9999999999
-    )
+@router.put("/users/{mobile_number}/topics")
+async def update_user_topics(
+    mobile_number: str,
+    request: UpdateTopicsRequest
 ):
     """Update topics of interest for a user"""
     try:
         supabase = get_supabase_client()
         
-        # First check if user exists
-        user_check = supabase.table("newsaroo_users")\
-            .select("id, name")\
-            .eq("mobile_no", mobile_no)\
-            .execute()
-            
-        if not user_check.data:
+        # Check if user exists
+        existing_user = await supabase.get_user(mobile_number)
+        if not existing_user:
             raise HTTPException(
                 status_code=404,
-                detail=f"No user found with mobile number: {mobile_no}"
+                detail=f"User with mobile number {mobile_number} not found"
             )
-            
-        # Update the topics
-        response = supabase.table("newsaroo_users")\
-            .update({"topics_of_interest": request.topics_of_interest})\
-            .eq("mobile_no", mobile_no)\
-            .execute()
+        
+        # Update topics
+        updated_user = await supabase.update_user_topics(
+            mobile_number=mobile_number,
+            topics=request.topics_of_interest
+        )
         
         return {
             "message": "Topics updated successfully",
-            "mobile_no": mobile_no,
-            "name": user_check.data[0]['name'],
-            "updated_topics": request.topics_of_interest
+            "mobile_number": mobile_number,
+            "updated_topics": updated_user['topics_of_interest']
         }
         
     except HTTPException as he:

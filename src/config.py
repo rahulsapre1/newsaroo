@@ -16,6 +16,8 @@ load_dotenv()
 # API Keys
 SERPAPI_KEY = os.environ.get("SERP_API_KEY")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+SUPABASE_API_URL = os.environ.get("SUPABASE_API_URL")
+SUPABASE_API_KEY = os.environ.get("SUPABASE_API_KEY")
 
 # Check if keys are available
 if not SERPAPI_KEY:
@@ -23,6 +25,9 @@ if not SERPAPI_KEY:
 
 if not OPENAI_API_KEY:
     logger.warning("OPENAI_API_KEY not found in environment variables. Please check your .env file.")
+
+if not SUPABASE_API_URL or not SUPABASE_API_KEY:
+    logger.warning("Supabase configuration not found. Please check SUPABASE_API_URL and SUPABASE_API_KEY in your .env file.")
 
 # Set the OpenAI API key for litellm
 os.environ["OPENAI_API_KEY"] = OPENAI_API_KEY if OPENAI_API_KEY else ""
@@ -43,6 +48,7 @@ LLM_CONFIG = {
 }
 
 # Log configuration status
-logger.info(f"Configuration loaded - API Keys status:")
+logger.info("Configuration loaded - API Keys status:")
 logger.info(f"SERP API Key: {'Present' if SERPAPI_KEY else 'Missing'}")
-logger.info(f"OpenAI API Key: {'Present' if OPENAI_API_KEY else 'Missing'}") 
+logger.info(f"OpenAI API Key: {'Present' if OPENAI_API_KEY else 'Missing'}")
+logger.info(f"Supabase Configuration: {'Present' if (SUPABASE_API_URL and SUPABASE_API_KEY) else 'Missing'}") 
