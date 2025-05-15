@@ -3,7 +3,7 @@ Pydantic models for request and response validation in the Newsaroo API.
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict
 from enum import Enum
 from datetime import datetime
 
@@ -103,3 +103,14 @@ class UpdateTopicsRequest(BaseModel):
 class ErrorResponse(BaseModel):
     detail: str
     status_code: int 
+
+class UserNewsSummaryResponse(BaseModel):
+    """Response model for user-specific news summaries"""
+    summaries: List[Dict[str, str]] = Field(
+        ...,
+        description="List of topic-wise summaries",
+        example=[
+            {"topic": "technology", "summary": "Latest tech developments..."},
+            {"topic": "sports", "summary": "Recent sports updates..."}
+        ]
+    ) 

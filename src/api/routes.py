@@ -3,7 +3,7 @@ API routes for the Newsaroo application.
 """
 
 from fastapi import APIRouter, HTTPException, Query, Path, Depends
-from src.api.models import NewsResponse, UserRegistration, UserResponse, UpdateTopicsRequest, NewsRequest, Article, ErrorResponse
+from src.api.models import NewsResponse, UserRegistration, UserResponse, UpdateTopicsRequest, NewsRequest, Article, ErrorResponse, UserNewsSummaryResponse
 from src.config import SERPAPI_KEY, OPENAI_API_KEY, DEFAULT_CONFIG, SUPABASE_API_URL, SUPABASE_API_KEY
 from ..news.search import search_news
 from ..news.content import process_news_results
@@ -194,14 +194,23 @@ async def get_user_news_summary(
         # 3. Generate summaries for each topic
         all_summaries = []
         for topic in topics:
-            # Search for news
+            logger.info(f"Searching for news on topic: {topic}")
+            # Search for news with enhanced content fetching
             news_results = await search_news(topic)
             
             if news_results:
+                # Check if we got enhanced content
+                articles_with_full_content = [article for article in news_results if "full_content" in article]
+                logger.info(f"Topic '{topic}': Found {len(articles_with_full_content)} articles with full content out of {len(news_results)} total")
+                
                 # Process the news results
                 processed_articles = await process_news_results(news_results)
                 
                 if processed_articles:
+                    # Calculate average content length for logging
+                    avg_content_length = sum(len(article["content"]) for article in processed_articles) / len(processed_articles)
+                    logger.info(f"Topic '{topic}': Average content length: {avg_content_length:.2f} characters")
+                    
                     # Generate summary
                     summary = await summarize_with_llm(processed_articles, topic)
                     all_summaries.append({
@@ -228,6 +237,80 @@ async def get_user_news_summary(
         raise HTTPException(
             status_code=500,
             detail=f"Error generating news summary: {str(e)}"
+        )
+
+@router.get("/users/{mobile}/summaries", response_model=UserNewsSummaryResponse, tags=["Users"])
+async def get_user_news_summaries(
+    mobile: str = Path(
+        ..., 
+        description="User's mobile number",
+        regex="^[0-9]{10}$"  # Ensure 10-digit mobile number
+    )
+):
+    """Get news summaries for user's topics of interest"""
+    try:
+        # Get Supabase client
+        supabase = get_supabase_client()
+        
+        # Get user's topics
+        user = await supabase.get_user(mobile)
+        if not user:
+            raise HTTPException(
+                status_code=404,
+                detail=f"No user found with mobile number: {mobile}"
+            )
+        
+        topics = user.get('topics_of_interest', [])
+        if not topics:
+            raise HTTPException(
+                status_code=404,
+                detail="No topics of interest found for this user"
+            )
+        
+        logger.info(f"Generating summaries for user with mobile {mobile} and topics: {topics}")
+        
+        # Generate summaries for each topic
+        summaries = []
+        for topic in topics:
+            # Search for news with enhanced content fetching
+            logger.info(f"Searching for news on topic: {topic}")
+            news_results = await search_news(topic)
+            
+            if news_results:
+                # Check if we got enhanced content
+                articles_with_full_content = [article for article in news_results if "full_content" in article]
+                logger.info(f"Topic '{topic}': Found {len(articles_with_full_content)} articles with full content out of {len(news_results)} total")
+                
+                # Process the news results
+                processed_articles = await process_news_results(news_results)
+                
+                if processed_articles:
+                    # Calculate average content length for logging
+                    avg_content_length = sum(len(article["content"]) for article in processed_articles) / len(processed_articles)
+                    logger.info(f"Topic '{topic}': Average content length: {avg_content_length:.2f} characters")
+                    
+                    # Generate summary
+                    summary = await summarize_with_llm(processed_articles, topic)
+                    summaries.append({
+                        "topic": topic,
+                        "summary": summary
+                    })
+        
+        if not summaries:
+            raise HTTPException(
+                status_code=404,
+                detail="Could not generate summaries for any topics"
+            )
+            
+        return {"summaries": summaries}
+        
+    except HTTPException as he:
+        raise he
+    except Exception as e:
+        logger.error(f"Error generating news summaries: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error generating news summaries: {str(e)}"
         )
 
 @router.put("/users/{mobile_number}/topics")
